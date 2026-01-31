@@ -7,10 +7,12 @@ html, body {
 }
 
 canvas {
-  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
-/* UI Layer */
+/* ================= UI LAYER ================= */
 #ui {
   position: absolute;
   inset: 0;
@@ -22,32 +24,40 @@ canvas {
   position: absolute;
   top: 12px;
   left: 12px;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0,0,0,0.45);
   color: white;
-  padding: 8px 12px;
-  border-radius: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
   font-size: 14px;
+  line-height: 1.4;
   pointer-events: auto;
+  min-width: 130px;
 }
 
 #globeBtn {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 42px;
-  height: 42px;
-  background: rgba(0,0,0,0.4);
+  width: 44px;
+  height: 44px;
+  background: rgba(0,0,0,0.45);
   color: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   pointer-events: auto;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
-/* Full-screen overlay screens */
+#globeBtn:hover {
+  background: rgba(0,0,0,0.65);
+  transform: scale(1.08);
+}
+
+/* ================= FULL SCREENS ================= */
 .screen {
   position: absolute;
   inset: 0;
@@ -57,12 +67,10 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 64px;
-  font-weight: bold;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 1.2s ease;
-  z-index: 10;
+  transition: opacity 0.9s ease;
+  z-index: 50;
 }
 
 .screen.active {
@@ -70,28 +78,74 @@ canvas {
   pointer-events: auto;
 }
 
-.subtitle {
-  font-size: 20px;
-  margin-top: 16px;
-  opacity: 0.7;
+/* ================= TITLE ================= */
+.titleText {
+  font-size: 72px;
+  font-weight: bold;
+  margin-bottom: 30px;
 }
 
-/* World Map */
+/* Start Button */
+#startBtn {
+  font-size: 22px;
+  padding: 14px 38px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  background: #2ecc71;
+  color: #063;
+  font-weight: bold;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  box-shadow: 0 6px 0 #1eaa5e;
+}
+
+#startBtn:hover {
+  background: #3cff88;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #1eaa5e;
+}
+
+#startBtn:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #1eaa5e;
+}
+
+/* ================= WORLD MAP ================= */
 #worldMap {
   background: linear-gradient(#2d6bff, #88e0ff);
-  gap: 30px;
-  font-size: 32px;
+  gap: 40px;
+}
+
+.mapTitle {
+  font-size: 48px;
+  font-weight: bold;
 }
 
 .mapButtons {
   display: flex;
-  gap: 20px;
+  gap: 26px;
 }
 
 .mapButtons button {
-  font-size: 18px;
-  padding: 12px 18px;
-  border-radius: 12px;
+  font-size: 20px;
+  padding: 16px 26px;
+  border-radius: 18px;
   border: none;
   cursor: pointer;
+  font-weight: bold;
+  background: #ffffffcc;
+  color: #234;
+  box-shadow: 0 6px 0 #bbb;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.mapButtons button:hover {
+  background: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #bbb;
+}
+
+.mapButtons button:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #bbb;
 }
