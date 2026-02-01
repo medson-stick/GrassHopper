@@ -49,27 +49,56 @@ class GrassBlade {
     this.targetAngle = 0;
   }
 
+  // Updates the angle of the grass blade for swaying effect
   update() {
-    this.angle += (this.targetAngle - this.angle) * 0.15;
-    this.targetAngle *= 0.9;
-  }
+  this.angle += (this.targetAngle - this.angle) * 0.15;
+
+  // calms the motion faster (less wiggly)
+  this.targetAngle *= 0.85;
+
+  // limit bend so it never folds too far
+  const maxBend = 0.55; // radians (~31 degrees)
+  if (this.angle > maxBend) this.angle = maxBend;
+  if (this.angle < -maxBend) this.angle = -maxBend;
+}
+
 
   draw() {
-    ctx.strokeStyle = "#1f7a1f";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(this.x, this.baseY);
-    ctx.lineTo(
-      this.x + Math.sin(this.angle) * this.height,
-      this.baseY - Math.cos(this.angle) * this.height
-    );
-    ctx.stroke();
-  }
+  const h = this.height;
+
+  // Tip position (still based on angle)
+  const tipX = this.x + Math.sin(this.angle) * h;
+  const tipY = this.baseY - Math.cos(this.angle) * h;
+
+  // Control point makes the blade curve (halfway up + pushed sideways)
+  const curve = 0.55; // 0..1 (higher = more curve)
+  const ctrlX = this.x + Math.sin(this.angle) * h * curve;
+  const ctrlY = this.baseY - Math.cos(this.angle) * h * 0.5;
+
+  ctx.strokeStyle = "#1f7a1f";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(this.x, this.baseY);
+  ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
+  ctx.stroke();
+}
+
 
   interact(mx, my) {
-    const dist = Math.hypot(this.x - mx, this.baseY - my);
-    if (dist < 70) this.targetAngle = (this.x - mx) * 0.025;
+  const dist = Math.hypot(this.x - mx, this.baseY - my);
+
+  if (dist < 70) {
+    // reduced strength
+    this.targetAngle = (this.x - mx) * 0.015;
+
+    // also clamp target so mouse can't force extreme bends
+    const maxTarget = 0.55;
+    if (this.targetAngle > maxTarget) this.targetAngle = maxTarget;
+    if (this.targetAngle < -maxTarget) this.targetAngle = -maxTarget;
   }
+}
+
 }
 
 function createGrass() {
@@ -78,7 +107,8 @@ function createGrass() {
 
   // ✅ offscreen buffer so widening the window never shows gaps
   const buffer = 400;
-  for (let x = -buffer; x < canvas.width + buffer; x += 6) {
+  //The gap between each blade of grass
+  for (let x = -buffer; x < canvas.width + buffer; x += 2) {
     grassBlades.push(new GrassBlade(x, grassTop));
   }
 }
@@ -107,6 +137,13 @@ class Bug {
     this.vy += 0.25;
     this.x += this.vx;
     this.y += this.vy;
+    const grassTop = canvas.height * 0.66;
+
+    // If bug falls back into the grass, reset it (it "disappears")
+    if (this.vy > 0 && this.y >= grassTop + 10) {
+      this.reset();
+      return;
+    }
 
     if (this.y > canvas.height + 60 || this.x < -120 || this.x > canvas.width + 120) {
       this.reset();
@@ -224,24 +261,42 @@ canvas.addEventListener("mousedown", (e) => {
   }
 });
 
+function drawGrassOccluder() {
+  const grassTop = canvas.height * 0.66;
+
+  // a thick strip right at the grass line to cover bugs that are "behind" grass
+  ctx.fillStyle = "#2d8f3a";
+  ctx.fillRect(0, grassTop - 6, canvas.width, 14);
+
+  // a slightly darker edge to sell depth
+  ctx.fillStyle = "rgba(0,0,0,0.12)";
+  ctx.fillRect(0, grassTop - 6, canvas.width, 6);
+}
+
 /* =====================
    LOOP
 ===================== */
 function loop() {
   if (state === "forest") {
-    drawBackground();
+  drawBackground();
 
-    grassBlades.forEach(g => {
-      g.interact(mouse.x, mouse.y);
-      g.update();
-      g.draw();
-    });
+  // update systems
+  grassBlades.forEach(g => {
+    g.interact(mouse.x, mouse.y);
+    g.update();
+  });
+  bugs.forEach(b => b.update());
 
-    bugs.forEach(b => {
-      b.update();
-      b.draw();
-    });
-  }
+  // draw bugs first (so grass draws over them)
+  bugs.forEach(b => b.draw());
+
+  // draw a thick strip at the grass line to hide lower bug parts
+  drawGrassOccluder();
+
+  // draw grass blades last (foreground)
+  grassBlades.forEach(g => g.draw());
+}
+
 
   requestAnimationFrame(loop);
 }
