@@ -1,5 +1,13 @@
+/* =========================================================
+   GRASS HOPPER — Core Game Script (sketch.js)
+   - Canvas rendering + gameplay loop
+   - UI screens (title / forest / world map)
+   - Biome theme system (sky/grass/bugs)
+========================================================= */
+
 /* =====================
-   GET ELEMENTS (loaded with defer)
+   DOM ELEMENTS
+   Grabs the canvas + overlay UI elements
 ===================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -11,93 +19,158 @@ const inventoryBox = document.getElementById("inventory");
 const startBtn = document.getElementById("startBtn");
 
 /* =====================
-   GAME STATE
+   CONSTANTS + GAME STATE
+   Stores key tuning values + current runtime state
 ===================== */
-let state = "title"; // title, forest, map
+const GRASS_RATIO = 0.66;          // grass line at 66% of screen height
+const OFFSCREEN_BUFFER = 400;      // extra grass offscreen for window expansion
+const BUG_TYPES = ["hopper", "beetle", "moth"]; // allowed bug types
+
+let state = "title";               // title, forest, map
+let currentLocation = "forest";    // forest, meadow, swamp
+
 let grassBackBlades = [];
 let grassFrontBlades = [];
 let bugs = [];
 let mouse = { x: 0, y: 0 };
 
-const inventory = { hopper: 0, beetle: 0, moth: 0 };
+const inventory = { hopper: 0, beetle: 0, moth: 0 }; // counts of caught bugs
 
 /* =====================
-   CANVAS RESIZE
+   THEME SYSTEM
+   Base theme + per-location overrides to reduce repetition
+===================== */
+const BASE_THEME = Object.freeze({
+  sky: "#7fd3ff",
+  ground: "#2d8f3a",
+  trees: "#1f5c2b",
+  grassFront: "#1f7a1f",
+  grassBack: "rgba(12, 60, 22, 0.98)",
+  bugs: Object.freeze({
+    hopper: "#5aff5a",
+    beetle: "#3b2f1e",
+    moth: "#ddd"
+  })
+});
+
+const THEME_OVERRIDES = Object.freeze({
+  forest: {},
+
+  meadow: {
+    sky: "#9fe7ff",
+    ground: "#44b84a",
+    trees: "#2b7a2f",
+    grassFront: "#35b135",
+    grassBack: "rgba(20, 95, 28, 0.95)",
+    bugs: { hopper: "#a6ff4d", beetle: "#4d2b1a", moth: "#fff2cc" }
+  },
+
+  swamp: {
+    sky: "#7fb8a6",
+    ground: "#2f6b3d",
+    trees: "#143f2a",
+    grassFront: "#2a8a4a",
+    grassBack: "rgba(10, 35, 20, 0.98)",
+    bugs: { hopper: "#55ffb3", beetle: "#1a1a1a", moth: "#bfffea" }
+  }
+});
+
+// Returns the active theme, falling back safely to forest/base
+function getTheme() {
+  const o = THEME_OVERRIDES[currentLocation] || THEME_OVERRIDES.forest;
+  return {
+    ...BASE_THEME,
+    ...o,
+    bugs: { ...BASE_THEME.bugs, ...(o.bugs || {}) }
+  };
+}
+
+// Computes the y-position of the grass line for current canvas size
+function grassTopY() {
+  return canvas.height * GRASS_RATIO;
+}
+
+/* =====================
+   RESIZE HANDLING
+   Keeps canvas + grass consistent with the window
 ===================== */
 function resize() {
   canvas.width = innerWidth;
   canvas.height = innerHeight;
 
-  // If we're in the forest, rebuild world elements to match new size
+  // Rebuild grass + refresh bugs to match the new geometry
   if (state === "forest") {
     createGrass();
-    bugs.forEach(b => b.reset());
+    for (const b of bugs) b.reset();
   }
 }
-
 window.addEventListener("resize", resize);
-resize(); // ✅ IMPORTANT: actually call it once at start
+resize(); // initial sizing
 
 /* =====================
-   GRASS
+   GRASS SYSTEM
+   Two layers: back (darker/slow), front (dense/interactive)
 ===================== */
 class GrassBlade {
-  constructor(x, baseY, opts = {}) {
+  constructor(x, baseY, opts) {
     this.x = x;
     this.baseY = baseY;
 
-    const heightScale = opts.heightScale ?? 1;
-    this.height = (40 + Math.random() * 50) * heightScale;
+    // Random blade height, scaled per layer
+    this.height = (40 + Math.random() * 50) * (opts.heightScale ?? 1);
 
     this.angle = 0;
     this.targetAngle = 0;
 
-    // Layer tuning
-    this.color = opts.color ?? "#1f7a1f";
-    this.curve = opts.curve ?? 0.45;
-    this.stiffness = opts.stiffness ?? 0.15;     // how fast it follows target
-    this.damping = opts.damping ?? 0.85;         // how fast it settles
-    this.interactStrength = opts.interactStrength ?? 0.015;
-    this.maxBend = opts.maxBend ?? 0.55;
-    this.interactive = opts.interactive ?? true;
+    // Layer style + physics tuning
+    this.color = opts.color;
+    this.curve = opts.curve;
+    this.stiffness = opts.stiffness;
+    this.damping = opts.damping;
+    this.interactStrength = opts.interactStrength;
+    this.maxBend = opts.maxBend;
 
-    // Store thickness ONCE to avoid flicker
+    // Stored once to avoid thickness flicker
     this.thickness = opts.thickness ?? (0.9 + Math.random() * 0.6);
-
-    // Optional subtle highlight
     this.highlightAlpha = opts.highlightAlpha ?? 0.08;
   }
 
   update() {
+    // Smoothly chase the target angle
     this.angle += (this.targetAngle - this.angle) * this.stiffness;
+
+    // Gradually reduce target for calmer motion
     this.targetAngle *= this.damping;
 
+    // Clamp blade bend to keep it realistic
     if (this.angle > this.maxBend) this.angle = this.maxBend;
     if (this.angle < -this.maxBend) this.angle = -this.maxBend;
   }
 
   interact(mx, my) {
-    if (!this.interactive) return;
-
+    // Only bend if cursor is near the blade base
     const dist = Math.hypot(this.x - mx, this.baseY - my);
     if (dist < 70) {
+      // Mouse pushes the target angle sideways
       this.targetAngle = (this.x - mx) * this.interactStrength;
 
+      // Clamp target so mouse can't force extreme bends
       if (this.targetAngle > this.maxBend) this.targetAngle = this.maxBend;
       if (this.targetAngle < -this.maxBend) this.targetAngle = -this.maxBend;
     }
   }
 
   draw() {
+    // Tip position based on bend angle
     const h = this.height;
-
     const tipX = this.x + Math.sin(this.angle) * h;
     const tipY = this.baseY - Math.cos(this.angle) * h;
 
+    // Control point to create a curved blade
     const ctrlX = this.x + Math.sin(this.angle) * h * this.curve;
     const ctrlY = this.baseY - Math.cos(this.angle) * h * 0.55;
 
-    // main blade
+    // Main blade stroke
     ctx.strokeStyle = this.color;
     ctx.lineWidth = this.thickness;
     ctx.beginPath();
@@ -105,7 +178,7 @@ class GrassBlade {
     ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
     ctx.stroke();
 
-    // subtle highlight (optional)
+    // Subtle highlight for depth
     if (this.highlightAlpha > 0) {
       ctx.strokeStyle = `rgba(255,255,255,${this.highlightAlpha})`;
       ctx.lineWidth = this.thickness * 0.6;
@@ -116,86 +189,103 @@ class GrassBlade {
     }
   }
 }
-function createGrass() {
-  grassBackBlades = [];
-  grassFrontBlades = [];
 
-  const grassTop = canvas.height * 0.66;
-  const buffer = 400;
+// Builds one grass layer with a given spacing and options
+function buildGrassLayer({ spacing, opts }) {
+  const blades = [];
+  const baseY = grassTopY();
 
-  // BACK grass (darker + slower)
-  const backSpacing = 3;
-  for (let x = -buffer; x < canvas.width + buffer; x += backSpacing) {
-    grassBackBlades.push(
-      new GrassBlade(x, grassTop, {
-        color: "#145a22",         // darker green
-        thickness: 1.2,           // keep it thin
-        heightScale: 0.78,        // slightly shorter
-        curve: 0.40,
-        stiffness: 0.08,          // slower movement
-        damping: 0.90,            // settles gently
-        interactStrength: 0.006,  // less mouse influence
-        maxBend: 0.38,            // bends less
-        highlightAlpha: 0.0,
-      })
-    );
+  // Include offscreen blades to avoid gaps after resizing wider
+  for (let x = -OFFSCREEN_BUFFER; x < canvas.width + OFFSCREEN_BUFFER; x += spacing) {
+    blades.push(new GrassBlade(x, baseY, opts));
   }
-
-  // FRONT grass (your dense layer)
-  const frontSpacing = 2;
-  for (let x = -buffer; x < canvas.width + buffer; x += frontSpacing) {
-    grassFrontBlades.push(
-      new GrassBlade(x, grassTop, {
-        color: "#1f7a1f",
-        curve: 0.45,
-        stiffness: 0.15,
-        damping: 0.85,
-        interactStrength: 0.015,
-        maxBend: 0.55,
-        highlightAlpha: 0.08
-      })
-    );
-  }
+  return blades;
 }
 
+// Rebuild both layers using the active biome theme
+function createGrass() {
+  const theme = getTheme();
+
+  grassBackBlades = buildGrassLayer({
+    spacing: 3,
+    opts: {
+      color: theme.grassBack,
+      thickness: 1.2,
+      heightScale: 0.78,
+      curve: 0.40,
+      stiffness: 0.08,
+      damping: 0.90,
+      interactStrength: 0.006,
+      maxBend: 0.38,
+      highlightAlpha: 0.0
+    }
+  });
+
+  grassFrontBlades = buildGrassLayer({
+    spacing: 2, // dense blades
+    opts: {
+      color: theme.grassFront,
+      curve: 0.45,
+      stiffness: 0.15,
+      damping: 0.85,
+      interactStrength: 0.015,
+      maxBend: 0.55,
+      highlightAlpha: 0.08
+    }
+  });
+}
 
 /* =====================
-   BUGS
+   BUG SYSTEM
+   Bugs emerge from grass, jump, then "sink" back in
 ===================== */
 class Bug {
   constructor() { this.reset(); }
 
   reset() {
+    const theme = getTheme();
+    const gt = grassTopY();
+
+    // Start near the grass line to look like it emerges
     this.x = Math.random() * canvas.width;
-    this.y = canvas.height * 0.66 + Math.random() * 20;
+    this.y = gt + 18;
+
+    // Random jump direction and strength
     this.vx = (Math.random() - 0.5) * 3;
     this.vy = -6 - Math.random() * 4;
+
     this.radius = 10;
 
-    this.type = ["hopper", "beetle", "moth"][Math.floor(Math.random() * 3)];
-    this.color =
-      this.type === "hopper" ? "#5aff5a" :
-      this.type === "beetle" ? "#3b2f1e" :
-      "#ddd";
+    // Pick a bug type and apply the biome’s color
+    this.type = BUG_TYPES[(Math.random() * BUG_TYPES.length) | 0];
+    this.color = theme.bugs[this.type] || "#fff";
   }
 
   update() {
+    const gt = grassTopY();
+
+    // Basic gravity + motion
     this.vy += 0.25;
     this.x += this.vx;
     this.y += this.vy;
-    const grassTop = canvas.height * 0.66;
 
-    // If bug falls back into the grass, reset it (it "disappears")
-    if (this.vy > 0 && this.y >= grassTop) {
+    // If falling into grass, disappear immediately
+    if (this.vy > 0 && this.y >= gt + 2) {
       this.reset();
       return;
     }
 
+    // Safety reset if it drifts too far away
+    if (this.x < -120 || this.x > canvas.width + 120 || this.y < -200 || this.y > canvas.height + 200) {
+      this.reset();
+    }
   }
 
   draw() {
-    const grassTop = canvas.height * 0.66;
-    if (this.y > grassTop + 2) return; // ✅ don't draw once inside grass
+    const gt = grassTopY();
+
+    // Don’t draw if it’s already inside the grass
+    if (this.y > gt + 2) return;
 
     ctx.fillStyle = this.color;
     ctx.beginPath();
@@ -204,12 +294,14 @@ class Bug {
   }
 
   isClicked(mx, my) {
+    // Hit test for collecting bugs
     return Math.hypot(this.x - mx, this.y - my) < this.radius;
   }
 }
 
 /* =====================
-   UI
+   UI (Inventory)
+   Updates the top-left inventory overlay
 ===================== */
 function updateInventoryUI() {
   inventoryBox.innerHTML = `
@@ -220,15 +312,19 @@ function updateInventoryUI() {
 }
 
 /* =====================
-   DRAW
+   BACKGROUND RENDERING
+   Sky + trees + ground, all theme-driven
 ===================== */
 function drawBackground() {
-  // sky
-  ctx.fillStyle = "#7fd3ff";
+  const theme = getTheme();
+  const gt = grassTopY();
+
+  // Sky background fill
+  ctx.fillStyle = theme.sky;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // tree blobs
-  ctx.fillStyle = "#1f5c2b";
+  // Simple tree blobs (parallax-ish silhouette)
+  ctx.fillStyle = theme.trees;
   for (let i = 0; i < canvas.width / 120 + 2; i++) {
     const x = i * 120 + 50;
     ctx.beginPath();
@@ -236,115 +332,138 @@ function drawBackground() {
     ctx.fill();
   }
 
-  // ground
-  ctx.fillStyle = "#2d8f3a";
-  ctx.fillRect(0, canvas.height * 0.66, canvas.width, canvas.height);
+  // Ground fill below grass line
+  ctx.fillStyle = theme.ground;
+  ctx.fillRect(0, gt, canvas.width, canvas.height);
+}
+
+// Occluder strip hides bug bottoms so they appear behind grass
+function drawGrassOccluder() {
+  const theme = getTheme();
+  const gt = grassTopY();
+
+  // Thick strip matches ground to cover the transition
+  ctx.fillStyle = theme.ground;
+  ctx.fillRect(0, gt - 10, canvas.width, 26);
+
+  // Dark lip adds a sense of depth at the boundary
+  ctx.fillStyle = "rgba(0,0,0,0.14)";
+  ctx.fillRect(0, gt - 10, canvas.width, 8);
 }
 
 /* =====================
-   SCREENS
+   STATE / NAVIGATION
+   Title -> Forest, Forest <-> World Map, Biome switching
 ===================== */
+function ensureForestInitialized() {
+  // Build grass only if not built yet
+  if (grassFrontBlades.length === 0) createGrass();
+
+  // Spawn initial bugs only once
+  if (bugs.length === 0) {
+    for (let i = 0; i < 7; i++) bugs.push(new Bug());
+  }
+}
+
 function showForest() {
   state = "forest";
-  titleScreen.classList.remove("active");
-  worldMap.classList.remove("active");
-
-  createGrass();
-  bugs = [];
-  for (let i = 0; i < 7; i++) bugs.push(new Bug());
+  titleScreen.classList.remove("active"); // hide title overlay
+  worldMap.classList.remove("active");    // hide map overlay
+  ensureForestInitialized();
 }
 
 function showMap() {
   state = "map";
-  worldMap.classList.add("active");
+  worldMap.classList.add("active");       // show map overlay
 }
 
 function hideMap() {
-  worldMap.classList.remove("active");
+  worldMap.classList.remove("active");    // hide map overlay
   showForest();
 }
 
-/* ✅ Inline fallback used by your HTML button */
-window.__GH_START__ = () => showForest();
+function setLocation(loc) {
+  // Validate location key
+  if (!THEME_OVERRIDES[loc]) loc = "forest";
+  currentLocation = loc;
 
-/* Also attach normal handler */
+  // Apply immediately if player is in the forest scene
+  if (state === "forest") {
+    createGrass();             // rebuild blades with new colors
+    for (const b of bugs) b.reset(); // refresh bug colors/types
+  }
+}
+
+/* =====================
+   EVENT LISTENERS
+   One-time input wiring for UI + canvas interaction
+===================== */
 startBtn.addEventListener("click", (e) => {
-  e.preventDefault();
+  e.preventDefault(); // prevents accidental form-like behavior
   showForest();
 });
 
-/* Globe + map buttons */
 globeBtn.addEventListener("click", () => {
-  if (state === "forest") showMap();
+  if (state === "forest") showMap(); // globe only works during gameplay
 });
 
 document.querySelectorAll(".mapButtons button").forEach(btn => {
-  btn.addEventListener("click", () => hideMap());
+  btn.addEventListener("click", () => {
+    setLocation(btn.dataset.area); // reads forest/meadow/swamp
+    hideMap();
+  });
 });
 
-/* =====================
-   INPUT
-===================== */
 canvas.addEventListener("mousemove", (e) => {
+  // Track mouse for grass interaction
   mouse.x = e.clientX;
   mouse.y = e.clientY;
 });
 
 canvas.addEventListener("mousedown", (e) => {
-  if (state !== "forest") return;
+  if (state !== "forest") return; // only collect bugs in gameplay
 
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
+  // Check bugs from end to start (feels like top-most is clicked first)
   for (let i = bugs.length - 1; i >= 0; i--) {
     if (bugs[i].isClicked(mx, my)) {
-      inventory[bugs[i].type]++;
+      inventory[bugs[i].type]++; // increase count for that bug type
       updateInventoryUI();
-      bugs[i].reset();
+      bugs[i].reset();           // respawn that bug
       break;
     }
   }
 });
 
-function drawGrassOccluder() {
-  const grassTop = canvas.height * 0.66;
-
-  // thicker strip to cover bug bottoms more convincingly
-  ctx.fillStyle = "#2d8f3a";
-  ctx.fillRect(0, grassTop - 10, canvas.width, 26);
-
-  // darker lip at the top edge
-  ctx.fillStyle = "rgba(0,0,0,0.14)";
-  ctx.fillRect(0, grassTop - 10, canvas.width, 8);
-}
-
 /* =====================
-   LOOP
+   MAIN LOOP
+   Updates + draws scene with correct depth order
 ===================== */
 function loop() {
   if (state === "forest") {
     drawBackground();
 
-    // UPDATE
-    grassBackBlades.forEach(g => { g.interact(mouse.x, mouse.y); g.update(); });
-    grassFrontBlades.forEach(g => { g.interact(mouse.x, mouse.y); g.update(); });
-    bugs.forEach(b => b.update());
+    // Update physics first
+    for (const g of grassBackBlades) { g.interact(mouse.x, mouse.y); g.update(); }
+    for (const g of grassFrontBlades) { g.interact(mouse.x, mouse.y); g.update(); }
+    for (const b of bugs) b.update();
 
-    // DRAW (back -> bugs -> occluder -> front)
-    grassBackBlades.forEach(g => g.draw());
-
-    bugs.forEach(b => b.draw());
-
+    // Draw order creates depth (back grass -> bugs -> occlusion -> front grass)
+    for (const g of grassBackBlades) g.draw();
+    for (const b of bugs) b.draw();
     drawGrassOccluder();
-
-    grassFrontBlades.forEach(g => g.draw());
+    for (const g of grassFrontBlades) g.draw();
   }
 
-
-
-  requestAnimationFrame(loop);
+  requestAnimationFrame(loop); // schedule next frame
 }
 
+/* =====================
+   BOOT
+   Initialize UI and start the render loop
+===================== */
 updateInventoryUI();
 loop();
