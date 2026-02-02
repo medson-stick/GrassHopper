@@ -14,7 +14,8 @@ const startBtn = document.getElementById("startBtn");
    GAME STATE
 ===================== */
 let state = "title"; // title, forest, map
-let grassBlades = [];
+let grassBackBlades = [];
+let grassFrontBlades = [];
 let bugs = [];
 let mouse = { x: 0, y: 0 };
 
@@ -41,77 +42,122 @@ resize(); // ✅ IMPORTANT: actually call it once at start
    GRASS
 ===================== */
 class GrassBlade {
-  constructor(x, baseY) {
+  constructor(x, baseY, opts = {}) {
     this.x = x;
     this.baseY = baseY;
-    this.height = 40 + Math.random() * 50;
+
+    const heightScale = opts.heightScale ?? 1;
+    this.height = (40 + Math.random() * 50) * heightScale;
+
     this.angle = 0;
     this.targetAngle = 0;
+
+    // Layer tuning
+    this.color = opts.color ?? "#1f7a1f";
+    this.curve = opts.curve ?? 0.45;
+    this.stiffness = opts.stiffness ?? 0.15;     // how fast it follows target
+    this.damping = opts.damping ?? 0.85;         // how fast it settles
+    this.interactStrength = opts.interactStrength ?? 0.015;
+    this.maxBend = opts.maxBend ?? 0.55;
+    this.interactive = opts.interactive ?? true;
+
+    // Store thickness ONCE to avoid flicker
+    this.thickness = opts.thickness ?? (0.9 + Math.random() * 0.6);
+
+    // Optional subtle highlight
+    this.highlightAlpha = opts.highlightAlpha ?? 0.08;
   }
 
-  // Updates the angle of the grass blade for swaying effect
   update() {
-  this.angle += (this.targetAngle - this.angle) * 0.15;
+    this.angle += (this.targetAngle - this.angle) * this.stiffness;
+    this.targetAngle *= this.damping;
 
-  // calms the motion faster (less wiggly)
-  this.targetAngle *= 0.85;
-
-  // limit bend so it never folds too far
-  const maxBend = 0.55; // radians (~31 degrees)
-  if (this.angle > maxBend) this.angle = maxBend;
-  if (this.angle < -maxBend) this.angle = -maxBend;
-}
-
-
-  draw() {
-  const h = this.height;
-
-  // Tip position (still based on angle)
-  const tipX = this.x + Math.sin(this.angle) * h;
-  const tipY = this.baseY - Math.cos(this.angle) * h;
-
-  // Control point makes the blade curve (halfway up + pushed sideways)
-  const curve = 0.55; // 0..1 (higher = more curve)
-  const ctrlX = this.x + Math.sin(this.angle) * h * curve;
-  const ctrlY = this.baseY - Math.cos(this.angle) * h * 0.5;
-
-  ctx.strokeStyle = "#1f7a1f";
-  ctx.lineWidth = 2;
-
-  ctx.beginPath();
-  ctx.moveTo(this.x, this.baseY);
-  ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
-  ctx.stroke();
-}
-
+    if (this.angle > this.maxBend) this.angle = this.maxBend;
+    if (this.angle < -this.maxBend) this.angle = -this.maxBend;
+  }
 
   interact(mx, my) {
-  const dist = Math.hypot(this.x - mx, this.baseY - my);
+    if (!this.interactive) return;
 
-  if (dist < 70) {
-    // reduced strength
-    this.targetAngle = (this.x - mx) * 0.015;
+    const dist = Math.hypot(this.x - mx, this.baseY - my);
+    if (dist < 70) {
+      this.targetAngle = (this.x - mx) * this.interactStrength;
 
-    // also clamp target so mouse can't force extreme bends
-    const maxTarget = 0.55;
-    if (this.targetAngle > maxTarget) this.targetAngle = maxTarget;
-    if (this.targetAngle < -maxTarget) this.targetAngle = -maxTarget;
+      if (this.targetAngle > this.maxBend) this.targetAngle = this.maxBend;
+      if (this.targetAngle < -this.maxBend) this.targetAngle = -this.maxBend;
+    }
+  }
+
+  draw() {
+    const h = this.height;
+
+    const tipX = this.x + Math.sin(this.angle) * h;
+    const tipY = this.baseY - Math.cos(this.angle) * h;
+
+    const ctrlX = this.x + Math.sin(this.angle) * h * this.curve;
+    const ctrlY = this.baseY - Math.cos(this.angle) * h * 0.55;
+
+    // main blade
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = this.thickness;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.baseY);
+    ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
+    ctx.stroke();
+
+    // subtle highlight (optional)
+    if (this.highlightAlpha > 0) {
+      ctx.strokeStyle = `rgba(255,255,255,${this.highlightAlpha})`;
+      ctx.lineWidth = this.thickness * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.baseY);
+      ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
+      ctx.stroke();
+    }
   }
 }
-
-}
-
 function createGrass() {
-  grassBlades = [];
-  const grassTop = canvas.height * 0.66;
+  grassBackBlades = [];
+  grassFrontBlades = [];
 
-  // ✅ offscreen buffer so widening the window never shows gaps
+  const grassTop = canvas.height * 0.66;
   const buffer = 400;
-  //The gap between each blade of grass
-  for (let x = -buffer; x < canvas.width + buffer; x += 2) {
-    grassBlades.push(new GrassBlade(x, grassTop));
+
+  // BACK grass (darker + slower)
+  const backSpacing = 3;
+  for (let x = -buffer; x < canvas.width + buffer; x += backSpacing) {
+    grassBackBlades.push(
+      new GrassBlade(x, grassTop, {
+        color: "#145a22",         // darker green
+        thickness: 1.2,           // keep it thin
+        heightScale: 0.78,        // slightly shorter
+        curve: 0.40,
+        stiffness: 0.08,          // slower movement
+        damping: 0.90,            // settles gently
+        interactStrength: 0.006,  // less mouse influence
+        maxBend: 0.38,            // bends less
+        highlightAlpha: 0.0,
+      })
+    );
+  }
+
+  // FRONT grass (your dense layer)
+  const frontSpacing = 2;
+  for (let x = -buffer; x < canvas.width + buffer; x += frontSpacing) {
+    grassFrontBlades.push(
+      new GrassBlade(x, grassTop, {
+        color: "#1f7a1f",
+        curve: 0.45,
+        stiffness: 0.15,
+        damping: 0.85,
+        interactStrength: 0.015,
+        maxBend: 0.55,
+        highlightAlpha: 0.08
+      })
+    );
   }
 }
+
 
 /* =====================
    BUGS
@@ -140,17 +186,17 @@ class Bug {
     const grassTop = canvas.height * 0.66;
 
     // If bug falls back into the grass, reset it (it "disappears")
-    if (this.vy > 0 && this.y >= grassTop + 10) {
+    if (this.vy > 0 && this.y >= grassTop) {
       this.reset();
       return;
     }
 
-    if (this.y > canvas.height + 60 || this.x < -120 || this.x > canvas.width + 120) {
-      this.reset();
-    }
   }
 
   draw() {
+    const grassTop = canvas.height * 0.66;
+    if (this.y > grassTop + 2) return; // ✅ don't draw once inside grass
+
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -264,13 +310,13 @@ canvas.addEventListener("mousedown", (e) => {
 function drawGrassOccluder() {
   const grassTop = canvas.height * 0.66;
 
-  // a thick strip right at the grass line to cover bugs that are "behind" grass
+  // thicker strip to cover bug bottoms more convincingly
   ctx.fillStyle = "#2d8f3a";
-  ctx.fillRect(0, grassTop - 6, canvas.width, 14);
+  ctx.fillRect(0, grassTop - 10, canvas.width, 26);
 
-  // a slightly darker edge to sell depth
-  ctx.fillStyle = "rgba(0,0,0,0.12)";
-  ctx.fillRect(0, grassTop - 6, canvas.width, 6);
+  // darker lip at the top edge
+  ctx.fillStyle = "rgba(0,0,0,0.14)";
+  ctx.fillRect(0, grassTop - 10, canvas.width, 8);
 }
 
 /* =====================
@@ -278,24 +324,23 @@ function drawGrassOccluder() {
 ===================== */
 function loop() {
   if (state === "forest") {
-  drawBackground();
+    drawBackground();
 
-  // update systems
-  grassBlades.forEach(g => {
-    g.interact(mouse.x, mouse.y);
-    g.update();
-  });
-  bugs.forEach(b => b.update());
+    // UPDATE
+    grassBackBlades.forEach(g => { g.interact(mouse.x, mouse.y); g.update(); });
+    grassFrontBlades.forEach(g => { g.interact(mouse.x, mouse.y); g.update(); });
+    bugs.forEach(b => b.update());
 
-  // draw bugs first (so grass draws over them)
-  bugs.forEach(b => b.draw());
+    // DRAW (back -> bugs -> occluder -> front)
+    grassBackBlades.forEach(g => g.draw());
 
-  // draw a thick strip at the grass line to hide lower bug parts
-  drawGrassOccluder();
+    bugs.forEach(b => b.draw());
 
-  // draw grass blades last (foreground)
-  grassBlades.forEach(g => g.draw());
-}
+    drawGrassOccluder();
+
+    grassFrontBlades.forEach(g => g.draw());
+  }
+
 
 
   requestAnimationFrame(loop);
