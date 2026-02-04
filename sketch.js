@@ -45,16 +45,11 @@ let mouse = { x: 0, y: 0 };
    Base theme + per-location overrides to reduce repetition
 ===================== */
 const BASE_THEME = Object.freeze({
-  sky: "#7fd3ff",
-  ground: "#2d8f3a",
-  trees: "#1f5c2b",
-  grassFront: "#1f7a1f",
+  sky: "#7bd2cb",
+  ground: "#6c833b",
+  trees: "#63732c",
+  grassFront: "#286328",
   grassBack: "rgba(12, 60, 22, 0.98)",
-  bugs: Object.freeze({
-    hopper: "#5aff5a",
-    beetle: "#3b2f1e",
-    moth: "#ddd"
-  })
 });
 
 const THEME_OVERRIDES = Object.freeze({
