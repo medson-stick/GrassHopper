@@ -11,7 +11,6 @@
 ===================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-
 const titleScreen = document.getElementById("titleScreen");
 const worldMap = document.getElementById("worldMap");
 const globeBtn = document.getElementById("globeBtn");
@@ -25,16 +24,21 @@ const startBtn = document.getElementById("startBtn");
 const GRASS_RATIO = 0.66;          // grass line at 66% of screen height
 const OFFSCREEN_BUFFER = 400;      // extra grass offscreen for window expansion
 const BUG_TYPES = ["hopper", "beetle", "moth"]; // allowed bug types
+const inventory = { hopper: 0, beetle: 0, moth: 0 }; // counts of caught bugs
 
+const BUG_SPRITES = {
+  hopper: "🦗",
+  beetle: "🪲",
+  moth: "🦋"
+};
+
+//Locations & Arrays
 let state = "title";               // title, forest, map
 let currentLocation = "forest";    // forest, meadow, swamp
-
 let grassBackBlades = [];
 let grassFrontBlades = [];
 let bugs = [];
 let mouse = { x: 0, y: 0 };
-
-const inventory = { hopper: 0, beetle: 0, moth: 0 }; // counts of caught bugs
 
 /* =====================
    THEME SYSTEM
@@ -83,11 +87,6 @@ function getTheme() {
     ...o,
     bugs: { ...BASE_THEME.bugs, ...(o.bugs || {}) }
   };
-}
-
-// Computes the y-position of the grass line for current canvas size
-function grassTopY() {
-  return canvas.height * GRASS_RATIO;
 }
 
 /* =====================
@@ -235,6 +234,11 @@ function createGrass() {
   });
 }
 
+// Computes the y-position of the grass line for current canvas size
+function grassTopY() {
+  return canvas.height * GRASS_RATIO;
+}
+
 /* =====================
    BUG SYSTEM
    Bugs emerge from grass, jump, then "sink" back in
@@ -254,7 +258,7 @@ class Bug {
     this.vx = (Math.random() - 0.5) * 3;
     this.vy = -6 - Math.random() * 4;
 
-    this.radius = 10;
+    this.radius = 12;
 
     // Pick a bug type and apply the biome’s color
     this.type = BUG_TYPES[(Math.random() * BUG_TYPES.length) | 0];
@@ -283,19 +287,51 @@ class Bug {
 
   draw() {
     const gt = grassTopY();
+    const bugSize = Math.max(18, this.radius * 2.6);
+    this.drawSize = bugSize;
+
+
 
     // Don’t draw if it’s already inside the grass
     if (this.y > gt + 2) return;
 
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fill();
+    const emoji = BUG_SPRITES[this.type] || "🐛";
+
+    // Size: tie to radius so it scales nicely
+    const size = Math.max(18, this.radius * 2.6);
+
+    ctx.save();
+
+    // Center the emoji on the bug position
+    ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Subtle shadow for pop (helps readability over grass/sky)
+    ctx.shadowColor = "rgba(0,0,0,0.25)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+
+    // Draw the emoji
+    ctx.fillText(emoji, this.x, this.y);
+
+    ctx.restore();
   }
 
   isClicked(mx, my) {
-    // Hit test for collecting bugs
-    return Math.hypot(this.x - mx, this.y - my) < this.radius;
+    // Fallback size if not drawn yet this frame
+    const size = this.drawSize || Math.max(18, this.radius * 2.6);
+
+    // Rectangle centered on (this.x, this.y)
+    const halfW = size * 0.65; // slightly generous horizontally
+    const halfH = size * 0.70; // slightly generous vertically
+
+    return (
+      mx >= this.x - halfW &&
+      mx <= this.x + halfW &&
+      my >= this.y - halfH &&
+      my <= this.y + halfH
+    );
   }
 }
 

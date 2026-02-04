@@ -24,7 +24,7 @@ canvas {
   position: absolute;
   top: 12px;
   left: 12px;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0, 0, 0, 0.45);
   color: white;
   padding: 10px 14px;
   border-radius: 12px;
@@ -38,15 +38,16 @@ canvas {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 44px;
-  height: 44px;
-  background: rgba(0,0,0,0.45);
+  width: 64px;
+  height: 64px;
+  background: rgba(0, 0, 0, 0.45);
   color: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 48px;
+  line-height: 1;
   cursor: pointer;
   pointer-events: auto;
   transition: transform 0.15s ease, background 0.15s ease;
@@ -54,8 +55,13 @@ canvas {
 
 #globeBtn:hover {
   background: rgba(0,0,0,0.65);
+  transform: scale(1.16);
+}
+
+#globeBtn:active {
   transform: scale(1.08);
 }
+
 
 /* ================= FULL SCREENS ================= */
 .screen {
