@@ -60,17 +60,15 @@ const THEME_OVERRIDES = Object.freeze({
     ground: "#44b84a",
     trees: "#2b7a2f",
     grassFront: "#35b135",
-    grassBack: "rgba(20, 95, 28, 0.95)",
-    bugs: { hopper: "#a6ff4d", beetle: "#4d2b1a", moth: "#fff2cc" }
+    grassBack: "rgba(20, 95, 28, 0.95)"
   },
 
   swamp: {
     sky: "#7fb8a6",
-    ground: "#2f6b3d",
-    trees: "#143f2a",
-    grassFront: "#2a8a4a",
-    grassBack: "rgba(10, 35, 20, 0.98)",
-    bugs: { hopper: "#55ffb3", beetle: "#1a1a1a", moth: "#bfffea" }
+    ground: "#39622d",
+    trees: "#123f1b",
+    grassFront: "#266d28",
+    grassBack: "rgba(11, 24, 16, 0.98)"
   }
 });
 
